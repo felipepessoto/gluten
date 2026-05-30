@@ -64,18 +64,37 @@ fi
 git -C "$DELTA_DIR" --no-pager log -1 --oneline
 echo "::endgroup::"
 
-echo "::group::Injecting Gluten bundle jar into Delta sbt unmanaged jars"
-# The unified `spark` sbt project lives at spark-unified/ in the Delta repo.
-# sbt's default `unmanagedBase` is `<baseDirectory>/lib`, so dropping a jar in
-# spark-unified/lib/ adds it to the spark project's Compile/Test classpath
-# without any build.sbt change. We also place it under spark/lib/ as a safety
-# net in case any helper task is invoked on the sparkV1 project directly.
+echo "::group::Injecting Gluten bundle jar onto the spark project's TEST classpath"
+# The Gluten bundle jar must be on the spark project's TEST runtime classpath
+# (so DeltaSQLCommandTest can load org.apache.gluten.GlutenPlugin by name) but
+# NOT on the COMPILE classpath of `sparkV1`, which is the project that holds
+# Delta's main sources. The bundle's transitive contents include extra symbols
+# under `org.apache.spark.sql` that collide with Delta's main sources -- e.g.
+# MergeOutputGeneration.scala imports both `org.apache.spark.sql._` and
+# `org.apache.spark.sql.delta.ClassicColumnConversions._`, and would then fail
+# with `reference to expression is ambiguous`.
+#
+# sbt auto-scans `<baseDirectory>/lib` via `unmanagedBase`. Two relevant
+# projects in Delta v4.2.0 have a `lib/` baseDirectory:
+#   - sparkV1: `project in file("spark")`     -> spark/lib
+#   - spark  : `project in file("spark-unified")` -> spark-unified/lib
+# unmanagedJars are project-scoped (NOT inherited by dependents), so dropping
+# the bundle into spark-unified/lib/ adds it to the unified `spark` project's
+# Compile *and* Test classpaths -- but NOT to sparkV1's. That's exactly what
+# we want:
+#   * sparkV1/Compile sees ONLY Delta's regular deps -> Delta main compiles.
+#   * spark/Test/fullClasspath sees the bundle -> tests load GlutenPlugin.
+# (Verified empirically: with bundle only in spark-unified/lib/, sbt's
+#  `show sparkV1/Compile/dependencyClasspath` excludes the bundle and
+#  `show spark/Test/fullClasspath` includes it.)
+#
+# We deliberately do NOT also drop the bundle into spark/lib/, which is what
+# caused the previous compile failure: spark/lib/ is sparkV1's unmanagedBase,
+# and putting the bundle there would re-introduce the ambiguity errors.
 SPARK_UNIFIED_LIB="$DELTA_DIR/spark-unified/lib"
-SPARK_V1_LIB="$DELTA_DIR/spark/lib"
-mkdir -p "$SPARK_UNIFIED_LIB" "$SPARK_V1_LIB"
+mkdir -p "$SPARK_UNIFIED_LIB"
 cp "$GLUTEN_BUNDLE_JAR" "$SPARK_UNIFIED_LIB/gluten-velox-bundle.jar"
-cp "$GLUTEN_BUNDLE_JAR" "$SPARK_V1_LIB/gluten-velox-bundle.jar"
-ls -lh "$SPARK_UNIFIED_LIB" "$SPARK_V1_LIB"
+ls -lh "$SPARK_UNIFIED_LIB"
 echo "::endgroup::"
 
 echo "::group::Patching DeltaSQLCommandTest to enable Gluten plugin"

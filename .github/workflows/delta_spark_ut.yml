@@ -21,9 +21,10 @@
 #      `gluten-velox-bundle-spark<spark>_<scala>-linux_amd64-<version>.jar`
 #      fat jar for Spark 4.1 + Scala 2.13 + Java 17 with the Delta profile.
 #   3. Clones delta-io/delta at the requested release tag (default `v4.2.0`),
-#      drops the bundle jar into the spark sbt project's unmanaged `lib/`
-#      directory, patches Delta's `DeltaSQLCommandTest` to register the Gluten
-#      plugin, and runs `sbt spark/test` sharded across the matrix.
+#      drops the bundle jar into `spark-unified/lib/` only (NOT `spark/lib/`
+#      -- see setup-delta.sh for the unmanagedJars scoping rationale),
+#      patches Delta's `DeltaSQLCommandTest` to register the Gluten plugin,
+#      and runs `sbt spark/test` sharded across the matrix.
 #
 # Limited to Velox + x86 to keep the matrix simple, per the pipeline's purpose
 # of validating Gluten changes against the latest Delta release.

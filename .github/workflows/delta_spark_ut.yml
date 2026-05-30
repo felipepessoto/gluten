@@ -227,14 +227,17 @@ jobs:
       - name: Install minimal tools
         run: |
           set -euo pipefail
-          # apache/gluten:centos-9-jdk17 already has java-17, git, tar, and a
-          # POSIX shell. Install the rest of what Delta's build/sbt and the
-          # tests may need.
-          yum install -y java-17-openjdk-devel which findutils gzip curl
+          # apache/gluten:centos-9-jdk17 already has java-17, git, tar, a POSIX
+          # shell, and curl-minimal (which provides the `curl` command sbt's
+          # launcher needs). Install the rest of what Delta's build/sbt and the
+          # tests may need. We deliberately do NOT install the full `curl`
+          # package -- it conflicts with the pre-installed curl-minimal.
+          yum install -y java-17-openjdk-devel which findutils gzip
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
           export PATH=$JAVA_HOME/bin:$PATH
           java -version
           git --version
+          curl --version | head -n 1
 
       - name: Cache sbt / Ivy / Coursier
         uses: actions/cache@v4

@@ -246,9 +246,13 @@ jobs:
             /root/.sbt
             /root/.ivy2
             /root/.cache/coursier
-          key: delta-spark-ut-sbt-${{ steps.resolve.outputs.delta_ref }}-${{ steps.resolve.outputs.spark_version }}-${{ env.DELTA_SCALA_VERSION }}-${{ matrix.shard }}
+          # Intentionally NOT keyed by ${{ matrix.shard }} -- all shards share
+          # the same dependency tree, so a single shared cache (with parallel
+          # save races resolved by GH on a first-write-wins basis) gives the
+          # best storage / hit-rate tradeoff.
+          key: delta-spark-ut-sbt-${{ steps.resolve.outputs.delta_ref }}-${{ steps.resolve.outputs.spark_version }}-${{ env.DELTA_SCALA_VERSION }}
           restore-keys: |
-            delta-spark-ut-sbt-${{ steps.resolve.outputs.delta_ref }}-${{ steps.resolve.outputs.spark_version }}-${{ env.DELTA_SCALA_VERSION }}-
+            delta-spark-ut-sbt-${{ steps.resolve.outputs.delta_ref }}-${{ steps.resolve.outputs.spark_version }}-
             delta-spark-ut-sbt-${{ steps.resolve.outputs.delta_ref }}-
 
       - name: Clone and patch Delta
@@ -278,11 +282,12 @@ jobs:
           # Only run the unified `spark` sbt project, NOT `sparkGroup/test` --
           # `sparkGroup` aggregates many other projects (sparkV2, contribs,
           # sharing, connect*, ...) that are out of scope for this pipeline.
-          # -J-Xmx6G / G1GC mirror what Delta's own run-tests.py uses for the
-          # sbt launcher JVM (forked test JVMs get their own -Xmx from
+          # -v / -J-Xmx6G / G1GC mirror what Delta's own run-tests.py uses for
+          # the sbt launcher JVM (forked test JVMs get their own -Xmx from
           # Test/javaOptions in delta build.sbt).
           ./build/sbt \
             -DsparkVersion=${{ steps.resolve.outputs.spark_version }} \
+            -v \
             -J-XX:+UseG1GC -J-Xmx6G \
             "++ ${DELTA_SCALA_VERSION}" \
             "spark/test"

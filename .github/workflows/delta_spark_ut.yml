@@ -290,6 +290,14 @@ jobs:
           # child inherits the parent's env). The set below mirrors
           # `extraJavaTestArgs` from Gluten's own root pom.xml (the
           # canonical Gluten test JVM flag set).
+          #
+          # NOTE: we deliberately do NOT put `-Xmx` here. JAVA_TOOL_OPTIONS
+          # is processed BEFORE the JVM command line, so Delta's explicit
+          # `-Xmx1024m` (set in build.sbt `Test / javaOptions`) would still
+          # win (last `-Xmx` wins). The forked-test-JVM heap is bumped via
+          # an sbt `set spark / Test / javaOptions ++= ...` command below,
+          # which APPENDS to Delta's own seq -- so our `-Xmx` lands AFTER
+          # `-Xmx1024m` and wins.
           JAVA_TOOL_OPTIONS: >-
             -XX:+IgnoreUnrecognizedVMOptions
             --add-opens=java.base/java.lang=ALL-UNNAMED
@@ -318,15 +326,41 @@ jobs:
           # Only run the unified `spark` sbt project, NOT `sparkGroup/test` --
           # `sparkGroup` aggregates many other projects (sparkV2, contribs,
           # sharing, connect*, ...) that are out of scope for this pipeline.
-          # -v / -J-Xmx6G / G1GC mirror what Delta's own run-tests.py uses for
-          # the sbt launcher JVM (forked test JVMs get their own -Xmx from
-          # Test/javaOptions in delta build.sbt).
+          #
+          # JVM heap layout:
+          # * sbt launcher JVM: -J-Xmx4G (was 6G; trimmed to leave more
+          #   headroom for the forked test JVM on the 16 GB GH runner).
+          #   sbt only compiles tests + orchestrates fork; 4G is comfortable.
+          # * Forked test JVM:  -Xmx6G via the `set ... Test / javaOptions`
+          #   command below. Delta v4.2.0 caps its test fork at `-Xmx1024m`
+          #   in build.sbt -- way too tight once Gluten Velox / Arrow / JNI
+          #   are loaded on top. Without this, a DV+CDC merge suite OOMs
+          #   inside RoaringBitmapArray.extendBitmaps. The `++=` appends to
+          #   Delta's own Test/javaOptions seq so our `-Xmx6G` comes AFTER
+          #   `-Xmx1024m` and wins (last `-Xmx` wins). We also turn on heap
+          #   dump on OOM so if it happens again we can analyze the dump.
           ./build/sbt \
             -DsparkVersion=${{ steps.resolve.outputs.spark_version }} \
             -v \
-            -J-XX:+UseG1GC -J-Xmx6G \
+            -J-XX:+UseG1GC -J-Xmx4G \
             "++ ${DELTA_SCALA_VERSION}" \
+            'set spark / Test / javaOptions ++= Seq("-Xmx6G", "-XX:+HeapDumpOnOutOfMemoryError", "-XX:HeapDumpPath=/tmp/")' \
             "spark/test"
+
+      - name: Compress heap dumps (if any)
+        if: ${{ failure() }}
+        run: |
+          set -euo pipefail
+          if compgen -G "/tmp/*.hprof" > /dev/null; then
+            echo "Found heap dump(s); compressing..."
+            ls -lh /tmp/*.hprof
+            # gzip is single-threaded and slow on multi-GB heaps but is
+            # always present in the centos image. Heap dumps compress ~10x.
+            gzip -1 /tmp/*.hprof
+            ls -lh /tmp/*.hprof.gz
+          else
+            echo "No heap dumps found in /tmp/."
+          fi
 
       - name: Upload test reports
         if: always()
@@ -347,4 +381,6 @@ jobs:
             delta/**/target/*.log
             delta/**/hs_err_pid*.log
             delta/**/core.*
+            /tmp/*.hprof
+            /tmp/*.hprof.gz
           if-no-files-found: ignore

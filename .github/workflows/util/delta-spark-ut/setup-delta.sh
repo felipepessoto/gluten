@@ -114,3 +114,28 @@ echo "Patched $TARGET"
 echo "--- diff vs. upstream ---"
 git -C "$DELTA_DIR" --no-pager diff -- "spark/src/test/scala/org/apache/spark/sql/delta/test/DeltaSQLCommandTest.scala" || true
 echo "::endgroup::"
+
+echo "::group::Disabling Delta scalastyle HeaderMatchesChecker"
+# Our reused DeltaSQLCommandTest carries Gluten's ASF-only license header, which
+# does not match Delta's HeaderMatchesChecker regex (the regex expects either a
+# Delta copyright block, or the ASF header followed by a Spark-modifications
+# block and the Delta copyright block). HeaderMatchesChecker is a file-level
+# checker that does NOT honor `// scalastyle:off` directives, so we instead
+# disable it globally in Delta's shared scalastyle-config.xml. The config is
+# applied via `ThisBuild / scalastyleConfig` in project/Checkstyle.scala, so a
+# single edit covers every sbt sub-project.
+SCALASTYLE_CONFIG="$DELTA_DIR/scalastyle-config.xml"
+if [ ! -f "$SCALASTYLE_CONFIG" ]; then
+  echo "Expected scalastyle config not found: $SCALASTYLE_CONFIG" >&2
+  exit 1
+fi
+sed -i \
+  's|<check level="error" class="org.scalastyle.file.HeaderMatchesChecker" enabled="true">|<check level="error" class="org.scalastyle.file.HeaderMatchesChecker" enabled="false">|' \
+  "$SCALASTYLE_CONFIG"
+if ! grep -q '<check level="error" class="org.scalastyle.file.HeaderMatchesChecker" enabled="false">' "$SCALASTYLE_CONFIG"; then
+  echo "Failed to disable HeaderMatchesChecker in $SCALASTYLE_CONFIG" >&2
+  grep -n 'HeaderMatchesChecker' "$SCALASTYLE_CONFIG" >&2 || true
+  exit 1
+fi
+echo "Disabled HeaderMatchesChecker in $SCALASTYLE_CONFIG"
+echo "::endgroup::"

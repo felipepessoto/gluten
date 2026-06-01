@@ -51,6 +51,7 @@ on:
       - '.github/workflows/delta_spark_ut.yml'
       - '.github/workflows/util/delta-spark-ut/**'
       - 'gluten-delta/**'
+      - 'backends-velox/src-delta40/**/DeltaSQLCommandTest.scala'
 
 env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
@@ -266,7 +267,7 @@ jobs:
             "${{ steps.resolve.outputs.delta_ref }}" \
             "$GITHUB_WORKSPACE/delta" \
             "$GLUTEN_JAR" \
-            "$GITHUB_WORKSPACE/.github/workflows/util/delta-spark-ut"
+            "$GITHUB_WORKSPACE"
 
       - name: Run Delta spark module tests (shard ${{ matrix.shard }} / ${{ env.DELTA_NUM_SHARDS }})
         env:

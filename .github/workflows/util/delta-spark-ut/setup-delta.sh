@@ -20,36 +20,41 @@
 # Gluten (Velox) bundle jar on the classpath.
 #
 # Usage:
-#   setup-delta.sh <delta_ref> <delta_dir> <gluten_bundle_jar> <gluten_workflow_util_dir>
+#   setup-delta.sh <delta_ref> <delta_dir> <gluten_bundle_jar> <gluten_repo_root>
 #
 # Arguments:
-#   delta_ref                 - git ref (tag/branch/sha) to check out (e.g. v4.2.0)
-#   delta_dir                 - destination directory for the Delta clone
-#   gluten_bundle_jar         - path to the gluten-velox-bundle fat jar
-#   gluten_workflow_util_dir  - path to .github/workflows/util/delta-spark-ut/
-#                               (the directory that contains DeltaSQLCommandTest.scala)
+#   delta_ref           - git ref (tag/branch/sha) to check out (e.g. v4.2.0)
+#   delta_dir           - destination directory for the Delta clone
+#   gluten_bundle_jar   - path to the gluten-velox-bundle fat jar
+#   gluten_repo_root    - path to the Gluten repository root (used to locate
+#                         backends-velox/src-delta40/.../DeltaSQLCommandTest.scala)
 #
 
 set -euo pipefail
 
 if [ "$#" -ne 4 ]; then
-  echo "Usage: $0 <delta_ref> <delta_dir> <gluten_bundle_jar> <gluten_workflow_util_dir>" >&2
+  echo "Usage: $0 <delta_ref> <delta_dir> <gluten_bundle_jar> <gluten_repo_root>" >&2
   exit 1
 fi
 
 DELTA_REF="$1"
 DELTA_DIR="$2"
 GLUTEN_BUNDLE_JAR="$3"
-UTIL_DIR="$4"
+GLUTEN_ROOT="$4"
 
 if [ ! -f "$GLUTEN_BUNDLE_JAR" ]; then
   echo "Gluten bundle jar not found: $GLUTEN_BUNDLE_JAR" >&2
   exit 1
 fi
 
-PATCH_SOURCE="$UTIL_DIR/DeltaSQLCommandTest.scala"
+# Reuse the existing DeltaSQLCommandTest from Gluten's backends-velox module
+# rather than maintaining a separate copy. This file is compiled as part of the
+# unified `spark` project's Test scope, which has the Gluten bundle on its
+# classpath (via spark-unified/lib/), so the typed GlutenConfig / VeloxDeltaConfig
+# imports resolve correctly.
+PATCH_SOURCE="$GLUTEN_ROOT/backends-velox/src-delta40/test/scala/org/apache/spark/sql/delta/test/DeltaSQLCommandTest.scala"
 if [ ! -f "$PATCH_SOURCE" ]; then
-  echo "Patched DeltaSQLCommandTest not found: $PATCH_SOURCE" >&2
+  echo "Gluten DeltaSQLCommandTest not found: $PATCH_SOURCE" >&2
   exit 1
 fi
 

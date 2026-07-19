@@ -20,6 +20,7 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, AttributeReference, Expression, NamedExpression}
 import org.apache.spark.sql.catalyst.planning.PhysicalOperation
 import org.apache.spark.sql.catalyst.plans.logical.{Filter, LocalRelation, LogicalPlan, Project}
+import org.apache.spark.sql.delta.actions.{AddFile, RemoveFile}
 import org.apache.spark.sql.delta.commands.cdc.CDCReader
 import org.apache.spark.sql.execution.{SparkPlan, SparkStrategy}
 import org.apache.spark.sql.execution.datasources.LogicalRelation
@@ -28,26 +29,46 @@ case class DeltaCDFScanStrategy(spark: SparkSession) extends SparkStrategy {
   override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
     case PhysicalOperation(projects, filters, relation: LogicalRelation) =>
       relation.relation match {
-        case cdfRelation: CDCReader.DeltaCDFRelation if !touchesDeletionVectors(cdfRelation) =>
+        case cdfRelation: CDCReader.DeltaCDFRelation
+            if !changesContainDeletionVectors(cdfRelation) =>
           planCDFRelation(relation, cdfRelation, projects, filters).map(planLater).toSeq
         case _ => Nil
       }
     case _ => Nil
   }
 
-  // Delta CDF over a deletion-vector table needs Delta's DV-aware, row-level reconciliation: a
-  // deleted row stays physically in its data file and is masked by a DV, so the CDF `delete` rows
-  // for a commit are only the rows the DV newly marks. Re-planning the analyzed CDF batch plan here
-  // loses that reconciliation on some Delta versions (e.g. Delta 2.4 / Spark 3.4), where the remove
-  // side would then surface every row of a logically-removed file as a `delete` change row instead
-  // of just the DV-marked ones. Decline to intercept such reads and let Spark serve them through
-  // Delta's own DeltaCDFRelation scan, which applies DVs correctly. Offloading loses nothing here:
-  // the native CDF scan path does not support DV reconciliation either (see the matching guard in
-  // DeltaScanTransformer).
-  private def touchesDeletionVectors(cdfRelation: CDCReader.DeltaCDFRelation): Boolean =
-    cdfRelation.snapshotWithSchemaMode.snapshot.metadata.configuration
-      .get("delta.enableDeletionVectors")
-      .exists(_.equalsIgnoreCase("true"))
+  // Delta CDF over a commit that uses deletion vectors needs Delta's DV-aware, row-level
+  // reconciliation: a deleted row stays physically in its data file and is masked by a DV, so the
+  // CDF `delete` rows for a commit are only the rows the DV newly marks. Re-planning the analyzed
+  // CDF batch plan here loses that reconciliation on some Delta versions (e.g. Delta 2.4 / Spark
+  // 3.4), where the remove side would then surface every row of a logically-removed file as a
+  // `delete` change row instead of just the DV-marked ones.
+  //
+  // The table property is not a reliable guard: it controls whether future writes may create DVs,
+  // while existing DVs can remain after the property is disabled. Inspect the AddFile/RemoveFile
+  // actions in the requested CDF interval instead. Decline to intercept only ranges that actually
+  // contain DVs and let Delta's DeltaCDFRelation apply them correctly. The matching physical-scan
+  // guard in DeltaScanTransformer remains as a backstop.
+  private def changesContainDeletionVectors(
+      cdfRelation: CDCReader.DeltaCDFRelation): Boolean = {
+    cdfRelation.startingVersion.exists {
+      startVersion =>
+        val changes =
+          cdfRelation.snapshotWithSchemaMode.snapshot.deltaLog.getChanges(startVersion)
+        val changesInRange = cdfRelation.endingVersion match {
+          case Some(endVersion) => changes.takeWhile { case (version, _) => version <= endVersion }
+          case None => changes
+        }
+        changesInRange.exists {
+          case (_, actions) =>
+            actions.exists {
+              case file: AddFile => file.deletionVector != null
+              case file: RemoveFile => file.deletionVector != null
+              case _ => false
+            }
+        }
+    }
+  }
 
   private def planCDFRelation(
       relation: LogicalRelation,

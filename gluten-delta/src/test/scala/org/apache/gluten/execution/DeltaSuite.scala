@@ -474,14 +474,38 @@ abstract class DeltaSuite extends WholeStageTransformerSuite {
       spark.sql(s"""
                    |insert into delta_cdf_dv values (1, "v1"), (2, "v2"), (3, "v3")
                    |""".stripMargin)
+
+      // Enabling DV writes does not mean this CDF range contains a DV. The insert-only range must
+      // still be eligible for native scan offload.
+      val insertOnlyDF = runAndCompare(
+        s"""
+           |select id, name, _change_type
+           |from table_changes('delta_cdf_dv', 0, 1)
+           |order by id, name, _change_type
+           |""".stripMargin)
+      assert(
+        collect(insertOnlyDF.queryExecution.executedPlan) {
+          case _: DeltaScanTransformer => true
+        }.nonEmpty,
+        insertOnlyDF.queryExecution.executedPlan)
+      checkAnswer(
+        insertOnlyDF,
+        Seq(
+          Row(1, "v1", "insert"),
+          Row(2, "v2", "insert"),
+          Row(3, "v3", "insert")))
+
       spark.sql(s"""
                    |delete from delta_cdf_dv where id = 2
                    |""".stripMargin)
+      spark.sql(s"""
+                   |alter table delta_cdf_dv set tblproperties (
+                   |  "delta.enableDeletionVectors" = "false")
+                   |""".stripMargin)
 
-      // CDF over a deletion-vector table needs Delta's DV-aware row-level reconciliation, which the
-      // native scan path does not do. Gluten keeps the whole CDF read on Spark (no
-      // DeltaScanTransformer offload) so that still-live, DV-masked rows are not surfaced as
-      // `delete` change rows. The result must still match vanilla Spark.
+      // Disabling future DV writes does not remove existing DVs. This range contains the DV-backed
+      // delete, so Gluten keeps the whole CDF read on Spark and lets Delta perform row-level
+      // reconciliation. Still-live rows must not be surfaced as `delete` change rows.
       val df = runAndCompare(
         s"""
            |select id, name, _change_type

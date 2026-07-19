@@ -18,8 +18,8 @@ set -exu
 
 CURRENT_DIR=$(cd "$(dirname "$BASH_SOURCE")"; pwd)
 VELOX_REPO=https://github.com/IBM/velox.git
-VELOX_BRANCH=dft-2026_06_06
-VELOX_ENHANCED_BRANCH=ibm-2026_06_06
+VELOX_BRANCH=dft-2026_07_16
+VELOX_ENHANCED_BRANCH=ibm-2026_07_16
 VELOX_HOME=""
 RUN_SETUP_SCRIPT=ON
 ENABLE_ENHANCED_FEATURES=OFF
@@ -69,6 +69,7 @@ function process_setup_ubuntu {
 }
 
 function process_setup_centos9 {
+  sed -i "s|run_and_time install_arrow||g" scripts/setup-centos9.sh
   echo "Using setup script from Velox"
 }
 
@@ -86,6 +87,17 @@ function process_setup_alinux3 {
 
 function process_setup_tencentos32 {
   sed -i "/^[[:space:]]*#/!s/.*dnf config-manager --set-enabled powertools/#&/" ${CURRENT_DIR}/setup-centos8.sh
+}
+
+# Folly enables jemalloc when Homebrew headers are visible but does not link
+# libjemalloc, leaving _mallocx/_nallocx undefined for downstream links. Keep
+# Folly's Linux-equivalent no-jemalloc behavior; Gluten's own jemalloc build is
+# independent of this. Header-search isolation from /usr/local is handled by
+# SDKROOT exported in builddeps-veloxbe.sh / build-velox.sh.
+function process_setup_macos {
+  if ! grep -Fq 'FOLLY_USE_JEMALLOC=OFF' scripts/setup-common.sh; then
+    sed -i '' 's/local FOLLY_FLAGS=(/local FOLLY_FLAGS=(-DFOLLY_USE_JEMALLOC=OFF /' scripts/setup-common.sh
+  fi
 }
 
 function prepare_velox_source_code {
@@ -214,7 +226,7 @@ function apply_setup_fixes() {
   if [ $OS == 'Linux' ]; then
     setup_linux
   elif [ $OS == 'Darwin' ]; then
-    :
+    process_setup_macos
   else
     echo "Unsupported kernel: $OS"
     exit 1

@@ -46,6 +46,7 @@ import org.apache.spark.sql.sources._
 // scalastyle:off line.size.limit
 
 class VeloxTestSettings extends BackendTestSettings {
+  import SuiteSettings._
   enableSuite[GlutenStringFunctionsSuite]
   enableSuite[GlutenBloomFilterAggregateQuerySuite]
   enableSuite[GlutenBloomFilterAggregateQuerySuiteCGOff]
@@ -106,8 +107,6 @@ class VeloxTestSettings extends BackendTestSettings {
     .exclude("SPARK-35719: cast timestamp with local time zone to timestamp without timezone")
     // Revised by setting timezone through config and commented unsupported cases.
     .exclude("cast string to timestamp")
-    // See https://github.com/facebookincubator/velox/issues/17593.
-    .exclude("Fast fail for cast string type to decimal type in ansi mode")
   enableSuite[GlutenArithmeticExpressionSuite]
   enableSuite[GlutenBitwiseExpressionsSuite]
   enableSuite[GlutenCastSuite]
@@ -123,8 +122,6 @@ class VeloxTestSettings extends BackendTestSettings {
     // Revised by setting timezone through config and commented unsupported cases.
     .exclude("cast string to timestamp")
     .exclude("SPARK-36286: invalid string cast to timestamp")
-    // See https://github.com/facebookincubator/velox/issues/17593.
-    .exclude("Fast fail for cast string type to decimal type")
   enableSuite[GlutenCollectionExpressionsSuite]
     // Rewrite in Gluten to replace Seq with Array
     .exclude("Shuffle")
@@ -607,9 +604,8 @@ class VeloxTestSettings extends BackendTestSettings {
     .exclude("CREATE TABLE USING AS SELECT based on the file without write permission")
     .exclude("create a table, drop it and create another one with the same name")
   enableSuite[GlutenDDLSourceLoadSuite]
-  enableSuite[GlutenDisableUnnecessaryBucketedScanWithoutHiveSupportSuite]
-    .disable(
-      "DISABLED: GLUTEN-4893 Vanilla UT checks scan operator by exactly matching the class type")
+  disableSuite[GlutenDisableUnnecessaryBucketedScanWithoutHiveSupportSuite](
+    "GLUTEN-4893: Vanilla UT checks scan operator by exactly matching the class type")
   enableSuite[GlutenDisableUnnecessaryBucketedScanWithoutHiveSupportSuiteAE]
   enableSuite[GlutenExternalCommandRunnerSuite]
   enableSuite[GlutenFilteredScanSuite]
@@ -914,6 +910,7 @@ class VeloxTestSettings extends BackendTestSettings {
   enableSuite[GlutenImplicitsTest]
   enableSuite[GlutenCollapseProjectExecTransformerSuite]
   enableSuite[GlutenSparkSessionExtensionSuite]
+    .includeGlutenTest("customColumnarOp")
   enableSuite[GlutenSQLCollectLimitExecSuite]
   enableSuite[GlutenBatchEvalPythonExecSuite]
     // Replaced with other tests that check for native operations

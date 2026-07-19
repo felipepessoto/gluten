@@ -6,12 +6,12 @@ nav_order: 5
 This document describes the limitations of velox backend by listing some known cases where exception will be thrown, gluten behaves incompatibly with spark, or certain plan's execution
 must fall back to vanilla spark, etc.
 
-### Override of Spark classes (For Spark3.2 and Spark3.3)
-Gluten avoids to modify Spark's existing code and use Spark APIs if possible. However, some APIs aren't exposed in Vanilla spark and we have to copy the Spark file and do the hardcode changes. The list of override classes can be found as ignoreClasses in package/pom.xml . If you use customized Spark, you may check if the files are modified in your spark, otherwise your changes will be overrided.
+### Override of Spark classes
+Gluten avoids modifying Spark's existing code and prefers Spark APIs when possible. However, some APIs are not exposed by vanilla Spark, so we have to copy the Spark file and apply hardcoded changes. The list of overridden classes can be found as `ignoreClasses` in `package/pom.xml`. If you use a customized Spark, check whether these files are modified in your Spark distribution, otherwise your changes will be overridden.
 
 So you need to ensure preferentially load the Gluten jar to overwrite the jar of vanilla spark. Refer to [How to prioritize loading Gluten jars in Spark](https://github.com/apache/gluten/blob/main/docs/velox-backend-troubleshooting.md#incompatible-class-error-when-using-native-writer).
 
-If not officially supported spark3.2/3.3 version is used, NoSuchMethodError can be thrown at runtime. More details see [issue-4514](https://github.com/apache/gluten/issues/4514).
+If an unofficially supported Spark version is used, NoSuchMethodError can be thrown at runtime. More details see [issue-4514](https://github.com/apache/gluten/issues/4514).
 
 ### Fallbacks
 Except the unsupported operators, functions, file formats, data sources listed in , there are some known cases also fall back to Vanilla Spark. 
@@ -59,7 +59,7 @@ Spark has `spark.sql.parquet.datetimeRebaseModeInWrite` config to decide whether
 or Proleptic Gregorian calendar should be used during parquet writing for dates/timestamps. If the parquet to read is written
 by Spark with this config as true, Velox's TableScan will output different result when reading it back.
 
-#### Partition write (For Spark3.2 and Spark3.3)
+#### Partition write (For Spark3.3)
 
 Gluten only supports static partition writes and does not support dynamic partition writes.
 
@@ -96,7 +96,7 @@ spark.range(100).selectExpr("id as c1", "id % 7 as p")
   .save(f.getCanonicalPath)
 ```
 
-#### CTAS write (For Spark3.2 and Spark3.3)
+#### CTAS write (For Spark3.3)
 
 Gluten does not create table as select. It may raise exception. e.g.,
 

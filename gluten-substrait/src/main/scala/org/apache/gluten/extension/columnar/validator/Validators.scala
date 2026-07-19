@@ -25,6 +25,7 @@ import org.apache.gluten.extension.columnar.offload.OffloadSingleNode
 import org.apache.gluten.sql.shims.SparkShimLoader
 
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql.catalyst.expressions.{Hour, Minute, Second}
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.aggregate.{HashAggregateExec, ObjectHashAggregateExec, SortAggregateExec}
 import org.apache.spark.sql.execution.datasources.WriteFilesExec
@@ -270,7 +271,22 @@ object Validators {
           case p if HiveTableScanExecTransformer.isHiveTableScan(p) => true
           case _ => false
         }
-        if (isScan) {
+        val isExtractOnNtz = plan match {
+          case p: ProjectExec =>
+            p.projectList.forall {
+              expr =>
+                (!containsNTZ(expr.dataType) &&
+                  !expr.references.exists(a => containsNTZ(a.dataType))) ||
+                expr.exists {
+                  case Hour(child, _) => containsNTZ(child.dataType)
+                  case Minute(child, _) => containsNTZ(child.dataType)
+                  case Second(child, _) => containsNTZ(child.dataType)
+                  case _ => false
+                }
+            }
+          case _ => false
+        }
+        if (isScan || isExtractOnNtz) {
           return pass()
         }
       }

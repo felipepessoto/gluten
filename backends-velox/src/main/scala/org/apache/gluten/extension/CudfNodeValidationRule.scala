@@ -55,11 +55,10 @@ case class CudfNodeValidationRule(glutenConf: GlutenConfig) extends Rule[SparkPl
 object CudfNodeValidationRule {
   def setTagForWholeStageTransformer(transformer: WholeStageTransformer): Unit = {
     if (!VeloxConfig.get.cudfEnableTableScan) {
-      // Spark3.2 does not have exists
-      val hasLeaf = transformer.find {
+      val hasLeaf = transformer.exists {
         case _: LeafTransformSupport => true
         case _ => false
-      }.isDefined
+      }
       if (!hasLeaf && VeloxConfig.get.cudfEnableValidation) {
         if (
           VeloxCudfPlanValidatorJniWrapper.validate(

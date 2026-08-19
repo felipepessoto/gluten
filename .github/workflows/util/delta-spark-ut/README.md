@@ -256,3 +256,5 @@ source <gluten>/.github/workflows/util/delta-spark-ut/java-test-args.sh
 
 `run-delta-tests.sh` sources the same file, so CI and local runs use identical
 flags.
+
+<!-- e2e trigger test: this file is excluded from the Delta paths filter on purpose -->

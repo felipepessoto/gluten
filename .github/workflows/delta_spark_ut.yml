@@ -90,8 +90,8 @@ on:
   # Velox/core changes are still caught. It also opens or updates a pull request
   # that removes tests confirmed to pass from the known-failures baseline.
   schedule:
-    # One-time fork smoke test: 02:05 UTC on August 23.
-    - cron: '5 2 23 8 *'
+    # One-time fork smoke test: 02:35 UTC on August 23.
+    - cron: '35 2 23 8 *'
 
 env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true

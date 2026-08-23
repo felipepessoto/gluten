@@ -84,6 +84,11 @@ on:
         type: boolean
         required: false
         default: true
+      simulate_scheduled_update:
+        description: 'Fork smoke test only: publish the scheduled baseline-update PR'
+        type: boolean
+        required: false
+        default: false
   # Nightly full run against the latest default branch. Per-PR the `paths:` filter
   # above runs the suite only for Delta-relevant changes, to save GHA minutes;
   # this scheduled run keeps full coverage once a day so regressions from general
@@ -509,7 +514,7 @@ jobs:
           path: aggregated/known-failures.txt
           if-no-files-found: warn
       - name: Upload safe nightly baseline update
-        if: ${{ github.event_name == 'schedule' }}
+        if: ${{ github.event_name == 'schedule' || (github.repository == 'felipepessoto/gluten' && github.event_name == 'workflow_dispatch' && inputs.simulate_scheduled_update) }}
         uses: actions/upload-artifact@v4
         with:
           name: delta-spark-ut-pruned-known-failures
@@ -524,7 +529,7 @@ jobs:
     # deliberately allowed to succeed after shard regressions so it can still
     # publish diagnostics. Only propose a baseline update from a fully clean
     # nightly test matrix; scheduled runs do not fail on now-passing tests.
-    if: ${{ !cancelled() && github.event_name == 'schedule' && needs.delta-spark-test.result == 'success' && needs.delta-spark-aggregate.result == 'success' }}
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || (github.repository == 'felipepessoto/gluten' && github.event_name == 'workflow_dispatch' && inputs.simulate_scheduled_update)) && needs.delta-spark-test.result == 'success' && needs.delta-spark-aggregate.result == 'success' }}
     runs-on: ubuntu-22.04
     permissions:
       actions: read
